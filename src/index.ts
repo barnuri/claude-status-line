@@ -2,13 +2,17 @@
 import { StatusParser } from './statusParser.ts';
 import { StatusRenderer } from './statusRenderer.ts';
 import { SetupWizard } from './setupWizard.ts';
+import { UpdateChecker } from './updateChecker.ts';
 
 class Application {
   async run(): Promise<void> {
     const args = process.argv.slice(2);
-    const isSetup = args.includes('--setup');
 
-    if (isSetup || process.stdin.isTTY) {
+    if (args.includes('--noop')) {
+      return;
+    }
+
+    if (args.includes('--setup') || process.stdin.isTTY) {
       await new SetupWizard().run();
       return;
     }
@@ -24,6 +28,8 @@ class Application {
     if (output) {
       process.stdout.write(output + '\n');
     }
+
+    new UpdateChecker().checkAndUpdateInBackground();
   }
 
   private resolveTerminalWidth(): number {
