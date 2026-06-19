@@ -1,60 +1,63 @@
 import type { Segment } from './types.ts';
-import { ANSI_COLOR } from './types.ts';
-
-const SEPARATOR = ' | ';
+import { ANSI } from './types.ts';
 
 export class StatusRenderer {
+  private static readonly SEPARATOR = '  ';
+  private static readonly SEGMENT_PAD = ' ';
+
   render(segments: Segment[], terminalWidth: number): string {
     if (segments.length === 0) {
       return '';
     }
 
-    const parts = segments.map(seg => this.formatSegment(seg));
-    const plainParts = segments.map(seg => this.plainText(seg));
+    const colored = segments.map(seg => this.formatSegment(seg));
+    const plain = segments.map(seg => this.plainWidth(seg));
 
-    return this.wrapLines(parts, plainParts, terminalWidth);
+    return this.wrapLines(colored, plain, terminalWidth);
   }
 
   private formatSegment(seg: Segment): string {
-    const color = ANSI_COLOR[seg.color];
-    const text = seg.label ? `${seg.label}: ${seg.value}` : seg.value;
-    return `${color}${text}${ANSI_COLOR.reset}`;
+    const p = StatusRenderer.SEGMENT_PAD;
+    const text = seg.label ? `${seg.icon}${seg.label}: ${seg.value}` : `${seg.icon}${seg.value}`;
+    return `${ANSI[seg.bg]}${ANSI[seg.fg]}${ANSI.bold}${p}${text}${p}${ANSI.reset}`;
   }
 
-  private plainText(seg: Segment): string {
-    return seg.label ? `${seg.label}: ${seg.value}` : seg.value;
+  private plainWidth(seg: Segment): number {
+    const p = StatusRenderer.SEGMENT_PAD;
+    const text = seg.label ? `${seg.icon}${seg.label}: ${seg.value}` : `${seg.icon}${seg.value}`;
+    return p.length + text.length + p.length;
   }
 
   private wrapLines(
     coloredParts: readonly string[],
-    plainParts: readonly string[],
+    plainWidths: readonly number[],
     terminalWidth: number,
   ): string {
     const lines: string[] = [];
-    let currentLineColored: string[] = [];
-    let currentLineWidth = 0;
+    let currentLine: string[] = [];
+    let currentWidth = 0;
 
     for (let i = 0; i < coloredParts.length; i++) {
       const colored = coloredParts[i] ?? '';
-      const plain = plainParts[i] ?? '';
-      const addWidth = currentLineColored.length === 0
-        ? plain.length
-        : SEPARATOR.length + plain.length;
+      const segWidth = plainWidths[i] ?? 0;
+      const addWidth = currentLine.length === 0
+        ? segWidth
+        : StatusRenderer.SEPARATOR.length + segWidth;
 
-      const fitsOnLine = terminalWidth <= 0 || (currentLineWidth + addWidth) <= terminalWidth;
+      const fits = terminalWidth <= 0 || (currentWidth + addWidth) <= terminalWidth;
 
-      if (!fitsOnLine && currentLineColored.length > 0) {
-        lines.push(currentLineColored.join(SEPARATOR));
-        currentLineColored = [colored];
-        currentLineWidth = plain.length;
+      if (!fits && currentLine.length > 0) {
+        lines.push(currentLine.join(StatusRenderer.SEPARATOR));
+        currentLine = [colored];
+        currentWidth = segWidth;
       } else {
-        currentLineColored.push(colored);
-        currentLineWidth += addWidth;
+        currentLine.push(colored);
+        currentWidth += addWidth;
       }
     }
 
-    if (currentLineColored.length > 0) {
-      lines.push(currentLineColored.join(SEPARATOR));
+    if (currentLine.length > 0) {
+      lines.push(currentLine.join(StatusRenderer.SEPARATOR));
     }
 
     return lines.join('\n');

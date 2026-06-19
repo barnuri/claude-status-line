@@ -7,12 +7,17 @@
   },
   "scripts": {
     "start": "bun run src/index.ts",
-    "setup": "bun run src/index.ts --setup"
+    "setup": "bun run src/index.ts --setup",
+    "capture": "bun run scripts/preview.ts && bun run scripts/animated-preview.ts && bun run scripts/make-gif.ts"
   },
   "keywords": ["claude", "claude-code", "status-line"],
   "author": "barnuri",
   "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest"
+  },
+  "dependencies": {
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0"
   }
 }

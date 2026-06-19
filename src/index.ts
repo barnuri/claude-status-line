@@ -3,50 +3,48 @@ import { StatusParser } from './statusParser.ts';
 import { StatusRenderer } from './statusRenderer.ts';
 import { SetupWizard } from './setupWizard.ts';
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const isSetup = args.includes('--setup');
+class Application {
+  async run(): Promise<void> {
+    const args = process.argv.slice(2);
+    const isSetup = args.includes('--setup');
 
-  if (isSetup) {
-    const wizard = new SetupWizard();
-    await wizard.run();
-    return;
+    if (isSetup || process.stdin.isTTY) {
+      await new SetupWizard().run();
+      return;
+    }
+
+    const raw = await this.readStdin();
+    const parser = new StatusParser();
+    const status = parser.parse(raw);
+    const segments = parser.buildSegments(status);
+
+    const terminalWidth = this.resolveTerminalWidth();
+    const output = new StatusRenderer().render(segments, terminalWidth);
+
+    if (output) {
+      process.stdout.write(output + '\n');
+    }
   }
 
-  const isTTY = process.stdin.isTTY;
-  if (isTTY) {
-    const wizard = new SetupWizard();
-    await wizard.run();
-    return;
+  private resolveTerminalWidth(): number {
+    if (process.stdout.columns) {
+      return process.stdout.columns;
+    }
+    const envCols = parseInt(process.env['COLUMNS'] ?? '', 10);
+    return isNaN(envCols) ? 0 : envCols;
   }
 
-  const raw = await readStdin();
-  const parser = new StatusParser();
-  const status = parser.parse(raw);
-  const segments = parser.buildSegments(status);
-
-  const terminalWidth = process.stdout.columns
-    ?? (process.env['COLUMNS'] ? parseInt(process.env['COLUMNS'], 10) : 0)
-    ?? 0;
-  const renderer = new StatusRenderer();
-  const output = renderer.render(segments, terminalWidth);
-
-  if (output) {
-    process.stdout.write(output + '\n');
+  private async readStdin(): Promise<string> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks).toString('utf-8');
   }
 }
 
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
-  }
-  return Buffer.concat(chunks).toString('utf-8');
-}
-
-main().catch(err => {
-  if (err instanceof Error) {
-    process.stderr.write(`claude-status-line error: ${err.message}\n`);
-  }
+new Application().run().catch(err => {
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`claude-status-line error: ${message}\n`);
   process.exit(1);
 });

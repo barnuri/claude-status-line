@@ -1,5 +1,4 @@
 import type { StatusJSON, Segment, RateLimit } from './types.ts';
-import { ANSI_COLOR } from './types.ts';
 import * as path from 'path';
 
 export class StatusParser {
@@ -19,22 +18,24 @@ export class StatusParser {
 
     const folder = this.extractFolder(status);
     if (folder) {
-      segments.push({ label: '', value: folder, color: 'cyan' });
+      segments.push({ icon: '󰉋 ', label: '', value: folder, fg: 'fgBrightWhite', bg: 'bgBlue' });
     }
 
     const model = this.extractModel(status);
     if (model) {
-      segments.push({ label: '', value: model, color: 'yellow' });
+      segments.push({ icon: '󰚩 ', label: '', value: model, fg: 'fgBrightWhite', bg: 'bgMagenta' });
     }
 
     const contextPercent = this.extractContextPercent(status);
     if (contextPercent !== null) {
-      segments.push({ label: 'ctx', value: `${contextPercent}%`, color: 'green' });
+      const bg = contextPercent > 80 ? 'bgRed' : contextPercent > 60 ? 'bgYellow' : 'bgGreen';
+      const fg = contextPercent > 60 ? 'fgBlack' : 'fgBrightWhite';
+      segments.push({ icon: '󰔚 ', label: 'ctx', value: `${contextPercent}%`, fg, bg });
     }
 
     const tokenCount = this.extractTokenCount(status);
     if (tokenCount !== null) {
-      segments.push({ label: 'tokens', value: this.formatTokens(tokenCount), color: 'magenta' });
+      segments.push({ icon: '󰑃 ', label: 'tokens', value: this.formatTokens(tokenCount), fg: 'fgBrightWhite', bg: 'bgBrightBlack' });
     }
 
     const rateLimitSegments = this.extractRateLimits(status);
@@ -86,27 +87,30 @@ export class StatusParser {
     for (const key of knownKeys) {
       const limit = limits[key];
       if (!limit) { continue; }
-
-      const pct = this.calcRemainingPercent(limit);
-      if (pct === null) { continue; }
-
-      const color = pct < 20 ? 'red' : pct < 50 ? 'yellow' : 'blue';
-      segments.push({ label: key, value: `${pct}%`, color });
+      const seg = this.buildRateLimitSegment(key, limit);
+      if (seg) { segments.push(seg); }
     }
 
     for (const key of Object.keys(limits)) {
       if (knownKeys.includes(key)) { continue; }
       const limit = limits[key];
       if (!limit) { continue; }
-
-      const pct = this.calcRemainingPercent(limit);
-      if (pct === null) { continue; }
-
-      const color = pct < 20 ? 'red' : pct < 50 ? 'yellow' : 'blue';
-      segments.push({ label: key, value: `${pct}%`, color });
+      const seg = this.buildRateLimitSegment(key, limit);
+      if (seg) { segments.push(seg); }
     }
 
     return segments;
+  }
+
+  private buildRateLimitSegment(key: string, limit: RateLimit): Segment | null {
+    const pct = this.calcRemainingPercent(limit);
+    if (pct === null) { return null; }
+
+    const icon = key === 'session' ? '⏱ ' : key === 'week' ? '📅 ' : '⚡ ';
+    const bg = pct < 20 ? 'bgRed' : pct < 50 ? 'bgYellow' : 'bgCyan';
+    const fg = pct < 50 ? 'fgBlack' : 'fgBrightWhite';
+
+    return { icon, label: key, value: `${pct}%`, fg, bg };
   }
 
   private calcRemainingPercent(limit: RateLimit): number | null {

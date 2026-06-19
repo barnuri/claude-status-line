@@ -2,12 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const CLAUDE_SETTINGS_PATHS = [
-  path.join(process.cwd(), '.claude', 'settings.json'),
-  path.join(os.homedir(), '.claude', 'settings.json'),
-];
-
 export class SetupWizard {
+  private static readonly GLOBAL_SETTINGS_DIR = path.join(os.homedir(), '.claude');
+
   async run(): Promise<void> {
     console.log('\n🚀 Claude Status Line — Setup\n');
 
@@ -32,15 +29,22 @@ export class SetupWizard {
   }
 
   private resolveSettingsPath(): string {
-    for (const candidate of CLAUDE_SETTINGS_PATHS) {
+    const candidates = [
+      path.join(process.cwd(), '.claude', 'settings.json'),
+      path.join(SetupWizard.GLOBAL_SETTINGS_DIR, 'settings.json'),
+    ];
+
+    for (const candidate of candidates) {
       if (fs.existsSync(candidate)) {
         return candidate;
       }
     }
-    const globalPath = CLAUDE_SETTINGS_PATHS[1];
+
+    const globalPath = candidates[1];
     if (!globalPath) {
       throw new Error('Could not determine Claude settings path');
     }
+
     fs.mkdirSync(path.dirname(globalPath), { recursive: true });
     return globalPath;
   }
