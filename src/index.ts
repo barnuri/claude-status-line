@@ -53,7 +53,7 @@ class Application {
       return process.stdout.columns;
     }
     const envCols = parseInt(process.env['COLUMNS'] ?? '', 10);
-    return isNaN(envCols) ? 0 : envCols;
+    return isNaN(envCols) ? 120 : envCols;
   }
 
   private async readStdin(): Promise<string> {

@@ -56,8 +56,8 @@ export class StatusParser {
     if (visibility.tokens) {
       const tokenCount = this.extractTokenCount(status);
       if (tokenCount !== null) {
-        const bar = visibility.context && contextPercent !== null ? ` ${this.buildMiniBar(contextPercent)}` : '';
-        const value = `${this.formatTokens(tokenCount)}${bar}`;
+        const pctSuffix = visibility.context && contextPercent !== null ? ` ${contextPercent}%` : '';
+        const value = `${this.formatTokens(tokenCount)}${pctSuffix}`;
         segments.push({ icon: '🔢 ', label: 'tokens', value, fg: colors.tokens.fg, bg: colors.tokens.bg });
       }
     }
