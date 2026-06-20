@@ -1,8 +1,12 @@
 export interface ContextWindow {
   readonly percentage?: number;
+  readonly used_percentage?: number;
+  readonly remaining_percentage?: number;
   readonly tokens?: number;
   readonly token_count?: number;
+  readonly total_input_tokens?: number;
   readonly size?: number;
+  readonly context_window_size?: number;
   readonly input?: number;
   readonly output?: number;
   readonly cache_read?: number;
@@ -13,7 +17,9 @@ export interface RateLimit {
   readonly used?: number;
   readonly limit?: number;
   readonly percentage?: number;
+  readonly used_percentage?: number;
   readonly reset_at?: string;
+  readonly resets_at?: number;
   readonly remaining?: number;
 }
 
@@ -29,23 +35,71 @@ export interface Workspace {
   readonly project_dir?: string;
 }
 
+export interface ApiInfo {
+  readonly type?: 'subscription' | 'api_key' | 'bedrock' | 'vertex';
+  readonly plan?: string;
+  readonly base_url?: string;
+}
+
 export interface StatusJSON {
   readonly cwd?: string;
-  readonly model?: string;
+  readonly model?: unknown;
   readonly context_window?: ContextWindow;
   readonly rate_limits?: RateLimits;
   readonly workspace?: Workspace;
   readonly session_id?: string;
   readonly hook_event_name?: string;
   readonly version?: string;
+  readonly api?: ApiInfo;
+}
+
+export type RgbColor = readonly [number, number, number];
+
+export interface SegmentColorConfig {
+  readonly bg: RgbColor;
+  readonly fg: RgbColor;
+}
+
+export type SeparatorStyle = 'powerline' | 'spaces';
+
+export interface SegmentVisibility {
+  readonly folder: boolean;
+  readonly git: boolean;
+  readonly model: boolean;
+  readonly context: boolean;
+  readonly tokens: boolean;
+  readonly auth: boolean;
+  readonly rateLimits: boolean;
+}
+
+export interface SegmentColorMap {
+  readonly folder: SegmentColorConfig;
+  readonly git: SegmentColorConfig;
+  readonly model: SegmentColorConfig;
+  readonly ctxHealthy: SegmentColorConfig;
+  readonly ctxWarning: SegmentColorConfig;
+  readonly ctxCritical: SegmentColorConfig;
+  readonly tokens: SegmentColorConfig;
+  readonly authSubscription: SegmentColorConfig;
+  readonly authApi: SegmentColorConfig;
+  readonly rateHealthy: SegmentColorConfig;
+  readonly rateWarning: SegmentColorConfig;
+  readonly rateCritical: SegmentColorConfig;
+}
+
+export interface Config {
+  readonly separatorStyle: SeparatorStyle;
+  readonly segments: SegmentVisibility;
+  readonly refreshInterval: number;
+  readonly colors: SegmentColorMap;
 }
 
 export interface Segment {
   readonly icon: string;
   readonly label: string;
   readonly value: string;
-  readonly fg: AnsiCode;
-  readonly bg: AnsiCode;
+  readonly fg: RgbColor;
+  readonly bg: RgbColor;
 }
 
 export const ANSI = {

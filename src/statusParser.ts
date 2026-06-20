@@ -1,7 +1,12 @@
-import type { StatusJSON, Segment, RateLimit } from './types.ts';
+import type { StatusJSON, Segment, RateLimit, Config, RgbColor, SegmentColorMap } from './types.ts';
 import * as path from 'path';
+import * as fs from 'fs';
 
 export class StatusParser {
+  private static readonly MINI_BAR_BLOCKS = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'] as const;
+  private static readonly MINI_BAR_WIDTH = 5;
+  private static readonly KNOWN_RATE_LIMIT_KEYS: ReadonlyArray<string> = ['session', 'five_hour', 'week', 'seven_day', 'day'];
+
   parse(raw: string): StatusJSON {
     if (!raw.trim()) {
       return {};
@@ -13,107 +18,236 @@ export class StatusParser {
     }
   }
 
-  buildSegments(status: StatusJSON): Segment[] {
+  buildSegments(status: StatusJSON, config: Config): Segment[] {
     const segments: Segment[] = [];
+    const { colors, segments: visibility } = config;
 
-    const folder = this.extractFolder(status);
-    if (folder) {
-      segments.push({ icon: '󰉋 ', label: '', value: folder, fg: 'fgBrightWhite', bg: 'bgBlue' });
+    if (visibility.folder) {
+      const folder = this.extractFolder(status);
+      if (folder) {
+        segments.push({ icon: '📁 ', label: '', value: folder, fg: colors.folder.fg, bg: colors.folder.bg });
+      }
     }
 
-    const model = this.extractModel(status);
-    if (model) {
-      segments.push({ icon: '󰚩 ', label: '', value: model, fg: 'fgBrightWhite', bg: 'bgMagenta' });
+    if (visibility.git) {
+      const cwd = status.cwd ?? status.workspace?.current_dir;
+      if (cwd) {
+        const branch = this.detectGitBranch(cwd);
+        if (branch && branch !== 'HEAD') {
+          segments.push({ icon: '⎇ ', label: 'git', value: branch, fg: colors.git.fg, bg: colors.git.bg });
+        }
+      }
+    }
+
+    if (visibility.model) {
+      const model = this.extractModel(status);
+      if (model) {
+        segments.push({ icon: '🤖 ', label: '', value: model, fg: colors.model.fg, bg: colors.model.bg });
+      }
     }
 
     const contextPercent = this.extractContextPercent(status);
-    if (contextPercent !== null) {
-      const bg = contextPercent > 80 ? 'bgRed' : contextPercent > 60 ? 'bgYellow' : 'bgGreen';
-      const fg = contextPercent > 60 ? 'fgBlack' : 'fgBrightWhite';
-      segments.push({ icon: '󰔚 ', label: 'ctx', value: `${contextPercent}%`, fg, bg });
+
+    if (visibility.context && contextPercent !== null) {
+      const colorConfig = this.ctxColor(contextPercent, colors);
+      segments.push({ icon: '⏳ ', label: 'ctx', value: `${contextPercent}%`, fg: colorConfig.fg, bg: colorConfig.bg });
     }
 
-    const tokenCount = this.extractTokenCount(status);
-    if (tokenCount !== null) {
-      segments.push({ icon: '󰑃 ', label: 'tokens', value: this.formatTokens(tokenCount), fg: 'fgBrightWhite', bg: 'bgBrightBlack' });
+    if (visibility.tokens) {
+      const tokenCount = this.extractTokenCount(status);
+      if (tokenCount !== null) {
+        const bar = visibility.context && contextPercent !== null ? ` ${this.buildMiniBar(contextPercent)}` : '';
+        const value = `${this.formatTokens(tokenCount)}${bar}`;
+        segments.push({ icon: '🔢 ', label: 'tokens', value, fg: colors.tokens.fg, bg: colors.tokens.bg });
+      }
     }
 
-    const rateLimitSegments = this.extractRateLimits(status);
-    segments.push(...rateLimitSegments);
+    if (visibility.auth) {
+      const authSeg = this.buildAuthSegment(status, colors);
+      if (authSeg) {
+        segments.push(authSeg);
+      }
+    }
+
+    if (visibility.rateLimits) {
+      segments.push(...this.extractRateLimits(status, colors));
+    }
 
     return segments;
   }
 
+  private buildAuthSegment(status: StatusJSON, colors: SegmentColorMap): Segment | null {
+    const apiType = status.api?.type;
+
+    if (apiType === 'bedrock' || apiType === 'vertex') {
+      const hostname = status.api?.base_url ? this.extractHostname(status.api.base_url) : apiType;
+      return { icon: '🌐 ', label: 'auth', value: hostname, fg: colors.authApi.fg, bg: colors.authApi.bg };
+    }
+
+    if (apiType === 'api_key') {
+      const key = process.env['ANTHROPIC_API_KEY'] ?? '';
+      const display = key.length >= 8 ? `API Key: ${key.slice(0, 8)}...` : 'API Key';
+      return { icon: '🔑 ', label: 'auth', value: display, fg: colors.authApi.fg, bg: colors.authApi.bg };
+    }
+
+    const baseUrl = process.env['ANTHROPIC_BASE_URL'];
+    if (baseUrl) {
+      const hostname = this.extractHostname(baseUrl);
+      return { icon: '🌐 ', label: 'auth', value: hostname, fg: colors.authApi.fg, bg: colors.authApi.bg };
+    }
+
+    const apiKey = process.env['ANTHROPIC_API_KEY'];
+    if (apiKey) {
+      const display = apiKey.length >= 8 ? `API Key: ${apiKey.slice(0, 8)}...` : 'API Key';
+      return { icon: '🔑 ', label: 'auth', value: display, fg: colors.authApi.fg, bg: colors.authApi.bg };
+    }
+
+    const plan = status.api?.plan;
+    const value = plan ? (plan.charAt(0).toUpperCase() + plan.slice(1)) : 'Sub';
+    return { icon: '✨ ', label: 'auth', value, fg: colors.authSubscription.fg, bg: colors.authSubscription.bg };
+  }
+
+  private extractHostname(url: string): string {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return url;
+    }
+  }
+
+  private ctxColor(percent: number, colors: SegmentColorMap): { fg: RgbColor; bg: RgbColor } {
+    if (percent > 80) { return colors.ctxCritical; }
+    if (percent > 60) { return colors.ctxWarning; }
+    return colors.ctxHealthy;
+  }
+
+  buildMiniBar(percent: number): string {
+    const clamped = Math.max(0, Math.min(100, percent));
+    const totalEighths = Math.round((clamped / 100) * StatusParser.MINI_BAR_WIDTH * 8);
+    const fullBlocks = Math.min(Math.floor(totalEighths / 8), StatusParser.MINI_BAR_WIDTH);
+    const remainder = totalEighths % 8;
+    const hasPartial = fullBlocks < StatusParser.MINI_BAR_WIDTH && remainder > 0;
+    const partialChar = hasPartial ? (StatusParser.MINI_BAR_BLOCKS[remainder] ?? ' ') : '';
+    const emptyCount = StatusParser.MINI_BAR_WIDTH - fullBlocks - (hasPartial ? 1 : 0);
+    return '█'.repeat(fullBlocks) + partialChar + ' '.repeat(emptyCount);
+  }
+
+  protected detectGitBranch(cwd: string): string | null {
+    try {
+      if (!fs.statSync(cwd).isDirectory()) {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+    const result = Bun.spawnSync(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    if (result.exitCode !== 0 || !result.stdout) {
+      return null;
+    }
+    const branch = result.stdout.toString('utf-8').trim();
+    if (!branch || branch === 'HEAD') {
+      return null;
+    }
+    return branch;
+  }
+
   private extractFolder(status: StatusJSON): string | null {
     const dir = status.cwd ?? status.workspace?.current_dir;
-    if (!dir) { return null; }
+    if (!dir) {
+      return null;
+    }
     return path.basename(dir);
   }
 
   private extractModel(status: StatusJSON): string | null {
-    return status.model ?? null;
+    const raw = status.model;
+    if (!raw) { return null; }
+    if (typeof raw === 'string') { return raw; }
+    if (typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      const val = obj['display_name'] ?? obj['name'] ?? obj['id'] ?? obj['modelId'] ?? obj['model'];
+      if (typeof val === 'string') { return val; }
+    }
+    return null;
   }
 
   private extractContextPercent(status: StatusJSON): number | null {
     const ctx = status.context_window;
     if (!ctx) { return null; }
-
-    if (typeof ctx.percentage === 'number') {
-      return Math.round(ctx.percentage);
-    }
-
-    const tokens = ctx.tokens ?? ctx.token_count ?? ctx.input;
-    const size = ctx.size;
+    if (typeof ctx.used_percentage === 'number') { return Math.round(ctx.used_percentage); }
+    if (typeof ctx.percentage === 'number') { return Math.round(ctx.percentage); }
+    const tokens = ctx.total_input_tokens ?? ctx.tokens ?? ctx.token_count ?? ctx.input;
+    const size = ctx.context_window_size ?? ctx.size;
     if (typeof tokens === 'number' && typeof size === 'number' && size > 0) {
       return Math.round((tokens / size) * 100);
     }
-
     return null;
   }
 
   private extractTokenCount(status: StatusJSON): number | null {
     const ctx = status.context_window;
     if (!ctx) { return null; }
-    return ctx.tokens ?? ctx.token_count ?? ctx.input ?? null;
+    return ctx.total_input_tokens ?? ctx.tokens ?? ctx.token_count ?? ctx.input ?? null;
   }
 
-  private extractRateLimits(status: StatusJSON): Segment[] {
+  private extractRateLimits(status: StatusJSON, colors: SegmentColorMap): Segment[] {
     const limits = status.rate_limits;
-    if (!limits) { return []; }
+    if (!limits) {
+      return [];
+    }
 
-    const knownKeys: ReadonlyArray<string> = ['session', 'week', 'day'];
     const segments: Segment[] = [];
 
-    for (const key of knownKeys) {
+    for (const key of StatusParser.KNOWN_RATE_LIMIT_KEYS) {
       const limit = limits[key];
       if (!limit) { continue; }
-      const seg = this.buildRateLimitSegment(key, limit);
+      const seg = this.buildRateLimitSegment(key, limit, colors);
       if (seg) { segments.push(seg); }
     }
 
     for (const key of Object.keys(limits)) {
-      if (knownKeys.includes(key)) { continue; }
+      if (StatusParser.KNOWN_RATE_LIMIT_KEYS.includes(key)) { continue; }
       const limit = limits[key];
       if (!limit) { continue; }
-      const seg = this.buildRateLimitSegment(key, limit);
+      const seg = this.buildRateLimitSegment(key, limit, colors);
       if (seg) { segments.push(seg); }
     }
 
     return segments;
   }
 
-  private buildRateLimitSegment(key: string, limit: RateLimit): Segment | null {
+  private buildRateLimitSegment(key: string, limit: RateLimit, colors: SegmentColorMap): Segment | null {
     const pct = this.calcRemainingPercent(limit);
-    if (pct === null) { return null; }
+    if (pct === null) {
+      return null;
+    }
+    const icon = (key === 'session' || key === 'five_hour') ? '⏱ ' : (key === 'week' || key === 'seven_day') ? '📅 ' : '⚡ ';
+    const label = key === 'five_hour' ? 'daily' : key === 'seven_day' ? 'weekly' : key;
+    const colorConfig = pct < 20 ? colors.rateCritical : pct < 50 ? colors.rateWarning : colors.rateHealthy;
+    const reset = limit.resets_at ? ` ~${this.formatResetTime(limit.resets_at)}` : '';
+    return { icon, label, value: `${pct}%${reset}`, fg: colorConfig.fg, bg: colorConfig.bg };
+  }
 
-    const icon = key === 'session' ? '⏱ ' : key === 'week' ? '📅 ' : '⚡ ';
-    const bg = pct < 20 ? 'bgRed' : pct < 50 ? 'bgYellow' : 'bgCyan';
-    const fg = pct < 50 ? 'fgBlack' : 'fgBrightWhite';
-
-    return { icon, label: key, value: `${pct}%`, fg, bg };
+  private formatResetTime(resetsAt: number, nowSecs: number = Date.now() / 1000): string {
+    const secs = Math.max(0, resetsAt - nowSecs);
+    if (secs < 60) { return 'soon'; }
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) { return `${mins}m`; }
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hours < 24) { return remMins > 0 ? `${hours}h${remMins}m` : `${hours}h`; }
+    const days = Math.floor(hours / 24);
+    const remHours = hours % 24;
+    return remHours > 0 ? `${days}d${remHours}h` : `${days}d`;
   }
 
   private calcRemainingPercent(limit: RateLimit): number | null {
+    if (typeof limit.used_percentage === 'number') {
+      return Math.round(100 - limit.used_percentage);
+    }
     if (typeof limit.percentage === 'number') {
       return Math.round(100 - limit.percentage);
     }
