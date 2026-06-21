@@ -78,9 +78,10 @@ export class StatusParser {
 
   private buildAuthSegment(status: StatusJSON, colors: SegmentColorMap): Segment | null {
     const apiType = status.api?.type;
+    const serverName = process.env['ANTHROPIC_SERVER_NAME'];
 
     if (apiType === 'bedrock' || apiType === 'vertex') {
-      const hostname = status.api?.base_url ? this.extractHostname(status.api.base_url) : apiType;
+      const hostname = serverName ?? (status.api?.base_url ? this.extractHostname(status.api.base_url) : apiType);
       return { icon: '🌐 ', label: 'auth', value: hostname, fg: colors.authApi.fg, bg: colors.authApi.bg };
     }
 
@@ -92,7 +93,7 @@ export class StatusParser {
 
     const baseUrl = process.env['ANTHROPIC_BASE_URL'];
     if (baseUrl) {
-      const hostname = this.extractHostname(baseUrl);
+      const hostname = serverName ?? this.extractHostname(baseUrl);
       return { icon: '🌐 ', label: 'auth', value: hostname, fg: colors.authApi.fg, bg: colors.authApi.bg };
     }
 

@@ -1,12 +1,18 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "outDir": "dist",
-    "rootDir": "src"
-  },
-  "include": ["src/**/*"]
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "outDir": "dist",
+        "rootDir": "src",
+        "allowImportingTsExtensions": true,
+        "types": [
+            "bun"
+        ]
+    },
+    "include": [
+        "src/**/*"
+    ]
 }

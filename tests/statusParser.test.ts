@@ -533,6 +533,29 @@ describe('buildSegments() — auth segment', () => {
     expect(seg?.value).toBe('bedrock.aws.com');
   });
 
+  it('uses ANTHROPIC_SERVER_NAME instead of hostname when ANTHROPIC_BASE_URL is set', () => {
+    delete process.env['ANTHROPIC_API_KEY'];
+    process.env['ANTHROPIC_BASE_URL'] = 'https://my-proxy.example.com/v1';
+    process.env['ANTHROPIC_SERVER_NAME'] = 'My Proxy';
+    const segs = parser.buildSegments({}, authCfg);
+    const seg = segs.find(s => s.label === 'auth');
+    expect(seg?.icon).toBe('🌐 ');
+    expect(seg?.value).toBe('My Proxy');
+    delete process.env['ANTHROPIC_BASE_URL'];
+    delete process.env['ANTHROPIC_SERVER_NAME'];
+  });
+
+  it('uses ANTHROPIC_SERVER_NAME instead of hostname for bedrock/vertex', () => {
+    delete process.env['ANTHROPIC_API_KEY'];
+    delete process.env['ANTHROPIC_BASE_URL'];
+    process.env['ANTHROPIC_SERVER_NAME'] = 'AWS Bedrock';
+    const segs = parser.buildSegments({ api: { type: 'bedrock', base_url: 'https://bedrock.aws.com' } }, authCfg);
+    const seg = segs.find(s => s.label === 'auth');
+    expect(seg?.icon).toBe('🌐 ');
+    expect(seg?.value).toBe('AWS Bedrock');
+    delete process.env['ANTHROPIC_SERVER_NAME'];
+  });
+
   it('omits auth segment when visibility.auth is false', () => {
     const segs = parser.buildSegments({}, noAuthCfg);
     expect(segs.find(s => s.label === 'auth')).toBeUndefined();
