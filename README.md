@@ -62,16 +62,21 @@ Add this to your `~/.claude/settings.json`:
 ## Regenerate preview screenshots
 
 ```bash
-# Generate all preview images and the animated GIF in one command
-bun run capture
+# Regenerate everything in one command (requires ffmpeg + Playwright Chromium)
+bun run update-all
 
 # Or step by step:
-bun run scripts/preview.ts          # → docs/preview.html
-bun run scripts/animated-preview.ts # → docs/animated.html
-bun run scripts/make-gif.ts         # → docs/demo.gif (from docs/frame-*.png)
+bun run scripts/preview.ts              # → docs/preview.html
+bun run scripts/animated-preview.ts    # → docs/animated.html
+bun run scripts/capture-screenshots.ts # → docs/frame-*.png + docs/screenshot-all-scenarios.png
+bun run scripts/make-gif.ts            # → docs/demo.gif
 ```
 
-Screenshots of individual scenarios are taken via Playwright MCP and saved to `docs/frame-*.png`. Use the `/capture-screenshots` Claude Code command to retake them.
+First-time setup for Playwright:
+
+```bash
+bunx playwright install chromium
+```
 
 ## How it works
 

@@ -1,16 +1,16 @@
 #!/usr/bin/env bun
 /**
- * Combines individual PNG frames into an animated GIF.
+ * Combines PNG frames into an animated GIF using ffmpeg palette optimization.
  * Usage: bun run scripts/make-gif.ts
- * Reads docs/frame-*.png, writes docs/demo.gif
+ * Requires: ffmpeg and ffprobe in PATH
  */
 
-import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { PNG } from 'pngjs';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
-import * as path from 'path';
 
-const FRAME_DELAY_MS = 2000;
+const FRAME_DELAY_S = 2.5;
+const BG_COLOR = '0x282a36';
+const OUT_PATH = 'docs/demo.gif';
 
 const FRAME_FILES = [
   'docs/frame-0-healthy.png',
@@ -19,51 +19,84 @@ const FRAME_FILES = [
   'docs/frame-3-wrapped.png',
 ];
 
-function decodePng(filePath: string): { data: Uint8Array; width: number; height: number } {
-  const buffer = fs.readFileSync(filePath);
-  const png = PNG.sync.read(buffer);
-  return {
-    data: new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.byteLength),
-    width: png.width,
-    height: png.height,
-  };
+interface Dimensions {
+  readonly width: number;
+  readonly height: number;
 }
 
-function padToSize(
-  data: Uint8Array,
-  srcWidth: number,
-  srcHeight: number,
-  dstWidth: number,
-  dstHeight: number,
-): Uint8Array {
-  if (srcWidth === dstWidth && srcHeight === dstHeight) {
-    return data;
+class GifMaker {
+  run(): void {
+    this.checkFrames();
+    this.checkFfmpeg();
+
+    const dims = FRAME_FILES.map(f => this.getFrameDimensions(f));
+    const maxWidth = Math.max(...dims.map(d => d.width));
+    const maxHeight = Math.max(...dims.map(d => d.height));
+
+    const args = this.buildFfmpegArgs(maxWidth, maxHeight);
+    execFileSync('ffmpeg', args, { stdio: 'ignore' });
+
+    const sizeKb = (fs.statSync(OUT_PATH).size / 1024).toFixed(0);
+    console.log(`GIF written to ${OUT_PATH} (${sizeKb} KB)`);
   }
-  const padded = new Uint8Array(dstWidth * dstHeight * 4).fill(0x28);
-  for (let y = 0; y < srcHeight && y < dstHeight; y++) {
-    const srcOff = y * srcWidth * 4;
-    const dstOff = y * dstWidth * 4;
-    padded.set(data.slice(srcOff, srcOff + Math.min(srcWidth, dstWidth) * 4), dstOff);
+
+  private checkFrames(): void {
+    const missing = FRAME_FILES.filter(f => !fs.existsSync(f));
+    if (missing.length > 0) {
+      console.error(`Missing frames:\n${missing.join('\n')}`);
+      console.error('Run: bun run scripts/capture-screenshots.ts');
+      process.exit(1);
+    }
   }
-  return padded;
+
+  private checkFfmpeg(): void {
+    try {
+      execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+    } catch {
+      console.error('ffmpeg not found in PATH — install ffmpeg to continue');
+      process.exit(1);
+    }
+  }
+
+  private getFrameDimensions(filePath: string): Dimensions {
+    const out = execFileSync('ffprobe', [
+      '-v', 'quiet',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height',
+      '-of', 'csv=p=0',
+      filePath,
+    ]).toString().trim();
+    const [w, h] = out.split(',').map(Number);
+    if (!w || !h) { throw new Error(`Failed to read dimensions from ${filePath}`); }
+    return { width: w, height: h };
+  }
+
+  private buildFfmpegArgs(maxWidth: number, maxHeight: number): string[] {
+    const inputArgs = FRAME_FILES.flatMap(f => [
+      '-loop', '1', '-t', String(FRAME_DELAY_S), '-i', f,
+    ]);
+
+    const scaleEach = FRAME_FILES.map((_, i) =>
+      `[${i}:v]scale=${maxWidth}:${maxHeight}:force_original_aspect_ratio=decrease,` +
+      `pad=${maxWidth}:${maxHeight}:0:0:color=${BG_COLOR}[v${i}]`,
+    ).join(';');
+
+    const concatInputs = FRAME_FILES.map((_, i) => `[v${i}]`).join('');
+    const filterComplex =
+      `${scaleEach};` +
+      `${concatInputs}concat=n=${FRAME_FILES.length}:v=1[v];` +
+      `[v]fps=10,split[a][b];` +
+      `[a]palettegen=max_colors=256:stats_mode=full[p];` +
+      `[b][p]paletteuse=dither=sierra2_4a`;
+
+    return [
+      '-y',
+      ...inputArgs,
+      '-filter_complex', filterComplex,
+      '-loop', '0',
+      OUT_PATH,
+    ];
+  }
 }
 
-const frames = FRAME_FILES.map(f => decodePng(f));
-
-const maxWidth = Math.max(...frames.map(f => f.width));
-const maxHeight = Math.max(...frames.map(f => f.height));
-
-const gif = GIFEncoder();
-
-for (const frame of frames) {
-  const rgba = padToSize(frame.data, frame.width, frame.height, maxWidth, maxHeight);
-  const palette = quantize(rgba, 256);
-  const index = applyPalette(rgba, palette);
-  gif.writeFrame(index, maxWidth, maxHeight, { palette, delay: FRAME_DELAY_MS, repeat: 0 });
-}
-
-gif.finish();
-
-const outPath = 'docs/demo.gif';
-fs.writeFileSync(outPath, Buffer.from(gif.bytes()));
-console.log(`GIF written to ${outPath} (${(fs.statSync(outPath).size / 1024).toFixed(0)} KB)`);
+new GifMaker().run();

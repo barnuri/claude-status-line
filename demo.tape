@@ -1,10 +1,10 @@
 Output docs/demo.gif
 Set FontFamily "JetBrains Mono"
-Set FontSize 14
-Set Width 1100
-Set Height 250
+Set FontSize 18
+Set Width 1400
+Set Height 160
 Set Theme "Dracula"
-Set Padding 24
+Set Padding 20
 Set LoopOffset 0%
 Set Shell "bash"
 

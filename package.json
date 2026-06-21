@@ -8,7 +8,8 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "setup": "bun run src/index.ts --setup",
-    "capture": "bun run scripts/preview.ts && bun run scripts/animated-preview.ts && bun run scripts/make-gif.ts"
+    "capture": "bun run scripts/update-all.ts",
+    "update-all": "bun run scripts/update-all.ts"
   },
   "keywords": ["claude", "claude-code", "status-line"],
   "author": "barnuri",
@@ -16,10 +17,7 @@
   "devDependencies": {
     "@types/bun": "^1.3.14",
     "@types/node": "^26.0.0",
+    "playwright": "^1.53.0",
     "typescript": "^6.0.3"
-  },
-  "dependencies": {
-    "gifenc": "^1.0.3",
-    "pngjs": "^7.0.0"
   }
 }
