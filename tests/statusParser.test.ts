@@ -411,12 +411,12 @@ describe('buildSegments() — rate limit segments', () => {
 
   it('calculates remaining from used + limit', () => {
     const segs = parser.buildSegments({ rate_limits: { session: { used: 25, limit: 100 } } }, cfg);
-    expect(segs.find(s => s.label === 'session')?.value).toBe('75%');
+    expect(segs.find(s => s.label === 'session')?.value).toBe('25% used');
   });
 
   it('calculates remaining from percentage field (inverted)', () => {
     const segs = parser.buildSegments({ rate_limits: { session: { percentage: 40 } } }, cfg);
-    expect(segs.find(s => s.label === 'session')?.value).toBe('60%');
+    expect(segs.find(s => s.label === 'session')?.value).toBe('40% used');
   });
 
   it('skips segment when limit is zero', () => {
@@ -442,7 +442,7 @@ describe('buildSegments() — rate limit segments', () => {
   it('handles actual Claude Code used_percentage field in rate limits', () => {
     const segs = parser.buildSegments({ rate_limits: { five_hour: { used_percentage: 13 } } }, cfg);
     const seg = segs.find(s => s.label === 'daily');
-    expect(seg?.value).toBe('87%');
+    expect(seg?.value).toBe('13% used');
     expect(seg?.icon).toBe('⏱ ');
   });
 
@@ -450,7 +450,7 @@ describe('buildSegments() — rate limit segments', () => {
     const segs = parser.buildSegments({ rate_limits: { seven_day: { used_percentage: 2 } } }, cfg);
     const seg = segs.find(s => s.label === 'weekly');
     expect(seg?.icon).toBe('📅 ');
-    expect(seg?.value).toBe('98%');
+    expect(seg?.value).toBe('2% used');
   });
 
   it('appends reset time when resets_at is set (hours+mins)', () => {
@@ -460,18 +460,18 @@ describe('buildSegments() — rate limit segments', () => {
     // verify the pattern rather than exact value since test time varies
     const segs = parser.buildSegments({ rate_limits: { five_hour: { used_percentage: 13, resets_at } } }, cfg);
     const val = segs.find(s => s.label === 'daily')?.value ?? '';
-    expect(val).toMatch(/^87% ~/);
+    expect(val).toMatch(/^13% used ~/);
   });
 
   it('shows "soon" when resets_at is in the past or immediate', () => {
     const resets_at = Math.floor(Date.now() / 1000) - 10;
     const segs = parser.buildSegments({ rate_limits: { five_hour: { used_percentage: 13, resets_at } } }, cfg);
-    expect(segs.find(s => s.label === 'daily')?.value).toBe('87% ~soon');
+    expect(segs.find(s => s.label === 'daily')?.value).toBe('13% used ~soon');
   });
 
   it('omits reset time when resets_at is absent', () => {
     const segs = parser.buildSegments({ rate_limits: { five_hour: { used_percentage: 13 } } }, cfg);
-    expect(segs.find(s => s.label === 'daily')?.value).toBe('87%');
+    expect(segs.find(s => s.label === 'daily')?.value).toBe('13% used');
   });
 });
 

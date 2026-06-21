@@ -221,15 +221,15 @@ export class StatusParser {
   }
 
   private buildRateLimitSegment(key: string, limit: RateLimit, colors: SegmentColorMap): Segment | null {
-    const pct = this.calcRemainingPercent(limit);
+    const pct = this.calcUsedPercent(limit);
     if (pct === null) {
       return null;
     }
     const icon = (key === 'session' || key === 'five_hour') ? '⏱ ' : (key === 'week' || key === 'seven_day') ? '📅 ' : '⚡ ';
     const label = key === 'five_hour' ? 'daily' : key === 'seven_day' ? 'weekly' : key;
-    const colorConfig = pct < 20 ? colors.rateCritical : pct < 50 ? colors.rateWarning : colors.rateHealthy;
+    const colorConfig = pct > 80 ? colors.rateCritical : pct > 50 ? colors.rateWarning : colors.rateHealthy;
     const reset = limit.resets_at ? ` ~${this.formatResetTime(limit.resets_at)}` : '';
-    return { icon, label, value: `${pct}%${reset}`, fg: colorConfig.fg, bg: colorConfig.bg };
+    return { icon, label, value: `${pct}% used${reset}`, fg: colorConfig.fg, bg: colorConfig.bg };
   }
 
   private formatResetTime(resetsAt: number, nowSecs: number = Date.now() / 1000): string {
@@ -245,18 +245,18 @@ export class StatusParser {
     return remHours > 0 ? `${days}d${remHours}h` : `${days}d`;
   }
 
-  private calcRemainingPercent(limit: RateLimit): number | null {
+  private calcUsedPercent(limit: RateLimit): number | null {
     if (typeof limit.used_percentage === 'number') {
-      return Math.round(100 - limit.used_percentage);
+      return Math.round(limit.used_percentage);
     }
     if (typeof limit.percentage === 'number') {
-      return Math.round(100 - limit.percentage);
+      return Math.round(limit.percentage);
     }
     if (typeof limit.remaining === 'number' && typeof limit.limit === 'number' && limit.limit > 0) {
-      return Math.round((limit.remaining / limit.limit) * 100);
+      return Math.round(((limit.limit - limit.remaining) / limit.limit) * 100);
     }
     if (typeof limit.used === 'number' && typeof limit.limit === 'number' && limit.limit > 0) {
-      return Math.round(((limit.limit - limit.used) / limit.limit) * 100);
+      return Math.round((limit.used / limit.limit) * 100);
     }
     return null;
   }
